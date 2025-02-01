@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { ArrowDown, Clock, Upload, Settings, Play } from 'lucide-react';
+import { videoProcessor } from '@/utils/videoProcessor';
 
 const VideoProcessor = () => {
   const { toast } = useToast();
@@ -14,7 +15,7 @@ const VideoProcessor = () => {
   const [watermark, setWatermark] = useState('');
   const [backgroundVideo, setBackgroundVideo] = useState<File | null>(null);
 
-  const handleStartProcessing = () => {
+  const handleStartProcessing = async () => {
     if (!subreddit || !backgroundVideo) {
       toast({
         title: "Missing Information",
@@ -30,14 +31,24 @@ const VideoProcessor = () => {
       description: "Generating 14 videos. This may take a while...",
     });
 
-    // Simulated processing time
-    setTimeout(() => {
-      setProcessing(false);
-      toast({
-        title: "Processing Complete",
-        description: "Videos have been generated successfully!",
+    try {
+      await videoProcessor.generateVideos({
+        subreddit,
+        backgroundVideo,
+        watermark,
+        time1,
+        time2
       });
-    }, 3000);
+    } catch (error) {
+      console.error('Processing error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to process videos",
+        variant: "destructive"
+      });
+    } finally {
+      setProcessing(false);
+    }
   };
 
   const handleBackgroundVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -50,6 +61,42 @@ const VideoProcessor = () => {
       });
     }
   };
+
+  // Schedule video generation
+  React.useEffect(() => {
+    const scheduleVideos = () => {
+      const now = new Date();
+      const [hours1, minutes1] = time1.split(':').map(Number);
+      const [hours2, minutes2] = time2.split(':').map(Number);
+      
+      const schedule1 = new Date(now);
+      schedule1.setHours(hours1, minutes1, 0);
+      
+      const schedule2 = new Date(now);
+      schedule2.setHours(hours2, minutes2, 0);
+      
+      if (schedule1 < now) schedule1.setDate(schedule1.getDate() + 1);
+      if (schedule2 < now) schedule2.setDate(schedule2.getDate() + 1);
+      
+      const timeout1 = schedule1.getTime() - now.getTime();
+      const timeout2 = schedule2.getTime() - now.getTime();
+      
+      const timer1 = setTimeout(() => {
+        if (subreddit && backgroundVideo) handleStartProcessing();
+      }, timeout1);
+      
+      const timer2 = setTimeout(() => {
+        if (subreddit && backgroundVideo) handleStartProcessing();
+      }, timeout2);
+      
+      return () => {
+        clearTimeout(timer1);
+        clearTimeout(timer2);
+      };
+    };
+    
+    return scheduleVideos();
+  }, [time1, time2, subreddit, backgroundVideo]);
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8">
