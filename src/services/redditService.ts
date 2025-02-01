@@ -16,6 +16,19 @@ export interface RedditPost {
 }
 
 export const fetchRedditPosts = async (subreddit: string, limit: number = 14): Promise<RedditPost[]> => {
+  // For testing, return a sample post
+  if (subreddit === 'test') {
+    return [{
+      title: 'Test Post',
+      selftext: 'This is a test post',
+      url: 'https://picsum.photos/1080/1920', // Random test image from Lorem Picsum
+      permalink: '/r/test/test_post',
+      author: 'testuser',
+      score: 100,
+      is_video: false
+    }];
+  }
+
   try {
     const response = await fetch(
       `${REDDIT_BASE_URL}/r/${subreddit}/top.json?limit=${limit}&t=day`
