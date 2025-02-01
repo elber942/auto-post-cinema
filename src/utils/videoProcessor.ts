@@ -1,6 +1,5 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
-import { Builder, By, until } from 'selenium-webdriver';
 import { toast } from '@/hooks/use-toast';
 
 export interface VideoConfig {
@@ -13,7 +12,6 @@ export interface VideoConfig {
 
 class VideoProcessor {
   private ffmpeg: FFmpeg;
-  private driver: any;
   
   constructor() {
     this.ffmpeg = new FFmpeg();
@@ -38,54 +36,21 @@ class VideoProcessor {
     }
   }
 
-  private async initSelenium() {
-    this.driver = await new Builder().forBrowser('chrome').build();
-  }
-
-  private async captureRedditPosts(subreddit: string, count: number = 14): Promise<string[]> {
-    try {
-      await this.initSelenium();
-      await this.driver.get(`https://reddit.com/r/${subreddit}/top`);
-      await this.driver.wait(until.elementLocated(By.css('.Post')), 10000);
-      
-      const posts = await this.driver.findElements(By.css('.Post'));
-      const screenshots: string[] = [];
-      
-      for (let i = 0; i < Math.min(count, posts.length); i++) {
-        const screenshot = await posts[i].takeScreenshot();
-        screenshots.push(screenshot);
-      }
-      
-      return screenshots;
-    } catch (error) {
-      console.error('Reddit scraping error:', error);
-      throw new Error('Failed to capture Reddit posts');
-    } finally {
-      if (this.driver) {
-        await this.driver.quit();
-      }
-    }
-  }
-
   private async processVideo(
-    screenshot: string,
     backgroundVideo: File,
     watermark?: string
   ): Promise<Blob> {
     try {
       const videoData = await fetchFile(backgroundVideo);
-      const screenshotData = await fetchFile(screenshot);
       
-      // Write input files
+      // Write input file
       await this.ffmpeg.writeFile('input.mp4', videoData);
-      await this.ffmpeg.writeFile('screenshot.png', screenshotData);
       
-      // Overlay screenshot on top half of video
+      // Process video with watermark if provided
       const command = [
         '-i', 'input.mp4',
-        '-i', 'screenshot.png',
         '-filter_complex',
-        `[1:v]scale=1080:960[top];[0:v]scale=1080:960[bottom];[top][bottom]vstack,format=yuv420p${
+        `format=yuv420p${
           watermark ? `,drawtext=text='${watermark}':x=10:y=h-th-10:fontsize=24:fontcolor=white` : ''
         }`,
         '-t', '5',
@@ -107,40 +72,32 @@ class VideoProcessor {
 
   public async generateVideos(config: VideoConfig): Promise<void> {
     try {
-      const screenshots = await this.captureRedditPosts(config.subreddit);
+      // For now, just process one video as a placeholder
+      // This will be replaced with actual Reddit content processing later
+      const video = await this.processVideo(
+        config.backgroundVideo,
+        config.watermark
+      );
       
-      for (let i = 0; i < screenshots.length; i++) {
-        const video = await this.processVideo(
-          screenshots[i],
-          config.backgroundVideo,
-          config.watermark
-        );
-        
-        // Save the video
-        const url = URL.createObjectURL(video);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `reddit_video_${i + 1}.mp4`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        // Wait 1 minute between processing
-        if (i < screenshots.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 60000));
-        }
-      }
+      // Save the video
+      const url = URL.createObjectURL(video);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `processed_video.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
       
       toast({
         title: "Success",
-        description: "All videos have been processed and saved",
+        description: "Video has been processed and saved",
       });
     } catch (error) {
       console.error('Video generation error:', error);
       toast({
         title: "Error",
-        description: "Failed to generate videos",
+        description: "Failed to generate video",
         variant: "destructive"
       });
     }
