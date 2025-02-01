@@ -3,8 +3,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowDown, Clock, Upload, Settings, Play } from 'lucide-react';
+import { Upload, Settings, Play } from 'lucide-react';
 import { videoProcessor } from '@/utils/videoProcessor';
+import { TimeSelector } from './TimeSelector';
+import { VideoPreview } from './VideoPreview';
+import { fetchRedditPosts, type RedditPost } from '@/services/redditService';
 
 const VideoProcessor = () => {
   const { toast } = useToast();
@@ -28,16 +31,24 @@ const VideoProcessor = () => {
     setProcessing(true);
     toast({
       title: "Processing Started",
-      description: "Generating 14 videos. This may take a while...",
+      description: "Fetching Reddit posts and generating videos...",
     });
 
     try {
-      await videoProcessor.generateVideos({
-        subreddit,
-        backgroundVideo,
-        watermark,
-        time1,
-        time2
+      const posts = await fetchRedditPosts(subreddit);
+      const imageOnlyPosts = posts.filter(post => 
+        !post.is_video && 
+        (post.url.endsWith('.jpg') || post.url.endsWith('.png'))
+      );
+
+      for (const post of imageOnlyPosts) {
+        const video = await videoProcessor.generateVideo(post, backgroundVideo, watermark);
+        await saveVideo(video, post.title);
+      }
+
+      toast({
+        title: "Success",
+        description: `Generated ${imageOnlyPosts.length} videos successfully`,
       });
     } catch (error) {
       console.error('Processing error:', error);
@@ -49,6 +60,17 @@ const VideoProcessor = () => {
     } finally {
       setProcessing(false);
     }
+  };
+
+  const saveVideo = async (videoBlob: Blob, title: string) => {
+    const url = URL.createObjectURL(videoBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${title.slice(0, 30)}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   const handleBackgroundVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -121,28 +143,16 @@ const VideoProcessor = () => {
 
             {/* Posting Times */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <Clock className="w-4 h-4" /> First Posting Time
-                </label>
-                <Input
-                  type="time"
-                  value={time1}
-                  onChange={(e) => setTime1(e.target.value)}
-                  className="bg-background"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground flex items-center gap-2">
-                  <Clock className="w-4 h-4" /> Second Posting Time
-                </label>
-                <Input
-                  type="time"
-                  value={time2}
-                  onChange={(e) => setTime2(e.target.value)}
-                  className="bg-background"
-                />
-              </div>
+              <TimeSelector
+                label="First Posting Time"
+                value={time1}
+                onChange={setTime1}
+              />
+              <TimeSelector
+                label="Second Posting Time"
+                value={time2}
+                onChange={setTime2}
+              />
             </div>
 
             {/* Background Video Selection */}
@@ -175,24 +185,7 @@ const VideoProcessor = () => {
             </div>
 
             {/* Video Layout Preview */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">Video Layout Preview</label>
-              <div className="bg-background rounded-lg p-4 border border-border">
-                <div className="aspect-[9/16] bg-accent/10 rounded-lg flex flex-col">
-                  <div className="h-1/2 border-b border-border flex items-center justify-center text-sm text-muted-foreground">
-                    Reddit Post
-                  </div>
-                  <div className="h-1/2 flex items-center justify-center text-sm text-muted-foreground">
-                    Background Video
-                  </div>
-                  {watermark && (
-                    <div className="absolute bottom-2 left-2 text-xs text-white bg-black/50 px-2 py-1 rounded">
-                      {watermark}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+            <VideoPreview watermark={watermark} />
 
             {/* Settings & Actions */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 pt-6">
